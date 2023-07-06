@@ -71,7 +71,7 @@ void setup() {
   flatpack.can_driver = &mcp_can; //must be set before any library function
   flatpack.id = 1; //must be set before first calling update(), cannot be changed later
   flatpack.over_voltage_protection = 55; //must be set before first calling set_output, gets written to device with every set_output
-  flatpack.walkin = FLATPACK_WALKIN_QUICK; //default is FLATPACK_WALKIN_QUICK, gets written to device with every set_output
+  flatpack.walkin = FLATPACK_WALKIN_SLOW; //default is FLATPACK_WALKIN_QUICK, gets written to device with every set_output
 
   u8f.println();
   Serial.println("initializing MCP");
@@ -143,13 +143,13 @@ void updateWidgets(){
   static GridTextWidget AhWid(&u8f,TFT_WHITE, TFT_BLACK, 1, 3, u8g2_font_logisoso26_tr);
 
   if(flatpack.warnings.issueBits.output_voltage_low || flatpack.alarms.issueBits.output_voltage_low){
-    VoltageMesWid.foreground_color = TFT_RED;
+    VoltageMesWid.update_color(TFT_RED);
   }else if(flatpack.state == FLATPACK_STATE_WALKIN){
-    VoltageMesWid.foreground_color = TFT_CYAN;
+    VoltageMesWid.update_color(TFT_CYAN);
   }else{
-    VoltageMesWid.foreground_color = TFT_WHITE;
+    VoltageMesWid.update_color(TFT_WHITE);
   }
-  CurrentMesWid.foreground_color = flatpack.warnings.issueBits.current_limit ? TFT_CYAN : TFT_WHITE;
+  CurrentMesWid.update_color(flatpack.warnings.issueBits.current_limit ? TFT_CYAN : TFT_WHITE);
 
   CurrentMesWid.update(strcat(dtostrf(flatpack.meas_current,0,1,tmp), "A"));
   CurrentSetWid.update(strcat(dtostrf(currentSet,0,1,tmp), "A"));
@@ -164,9 +164,9 @@ void updateWidgets(){
   static TextWidget VACWid(&u8f, TFT_WHITE, TFT_BLACK, 15, 270, u8g2_font_logisoso18_tf);
 
   bool bad_temp = flatpack.warnings.issueBits.high_temp || flatpack.warnings.issueBits.low_temp || flatpack.alarms.issueBits.high_temp || flatpack.alarms.issueBits.low_temp;
-  TempWid.foreground_color = bad_temp ? TFT_RED : TFT_WHITE;
+  TempWid.update_color(bad_temp ? TFT_RED : TFT_WHITE);
   bool bad_mains = flatpack.warnings.issueBits.high_mains || flatpack.warnings.issueBits.low_mains || flatpack.alarms.issueBits.high_mains || flatpack.alarms.issueBits.low_mains;
-  VACWid.foreground_color = bad_mains ? TFT_RED : TFT_WHITE;
+  VACWid.update_color(bad_mains ? TFT_RED : TFT_WHITE);
 
   TempWid.update(strcat(strcat(strcat(strcat(dtostrf(flatpack.temp_in,0,0,tmp), "°C"), "->"), dtostrf(flatpack.temp_out, 0, 0, tmp2)), "°C"));
   VACWid.update(strcat(dtostrf(flatpack.voltage_in,0,0,tmp), "V"));

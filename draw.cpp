@@ -11,17 +11,31 @@ TextWidget::TextWidget(U8g2_for_TFT_eSPI *u8f_, uint16_t foreground_color_, uint
 
 void TextWidget::update(char *new_string) {
   if (strcmp(new_string, prev_string) != 0) {
-    u8f->setFont(font);
-
-    u8f->setForegroundColor(background_color);
-    u8f->setCursor(pos_x, pos_y);
-    u8f->print(prev_string);
-    u8f->setForegroundColor(foreground_color);
-    u8f->setCursor(pos_x, pos_y);
-    u8f->print(new_string);
-
+    remove();
+    draw(new_string);
     strcpy(prev_string, new_string);
   }
+}
+
+void TextWidget::update_color(uint16_t new_foreground_color) {
+  if(new_foreground_color != foreground_color){
+    foreground_color = new_foreground_color;
+    draw(prev_string);
+  }
+}
+
+void TextWidget::draw(char *string) {
+  u8f->setFont(font);
+  u8f->setForegroundColor(foreground_color);
+  u8f->setCursor(pos_x, pos_y);
+  u8f->print(string);
+}
+
+void TextWidget::remove() {
+  u8f->setFont(font);
+  u8f->setForegroundColor(background_color);
+  u8f->setCursor(pos_x, pos_y);
+  u8f->print(prev_string);
 }
 
 GridTextWidget::GridTextWidget(U8g2_for_TFT_eSPI *u8f_, uint16_t foreground_color_, uint16_t background_color_,
