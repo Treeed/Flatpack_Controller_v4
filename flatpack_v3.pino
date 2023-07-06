@@ -1,0 +1,148 @@
+#include <Arduino.h>
+#include "FlatpackMCP.h"
+#include "mcp_can.h"
+#include "helpers.h"
+
+#define CAN_CS_PIN 6
+
+MCP_CAN mcp_can(CAN_CS_PIN);
+FlatpackMCP flatpack;
+
+void setup(){
+  Serial.begin(115200);
+
+  flatpack.can_driver = &mcp_can; //must be set before any library function
+  flatpack.id = 1; //must be set before first calling update(), cannot be changed later
+  flatpack.over_voltage_protection = 55; //must be set before first calling set_output, gets written to device with every set_output
+  flatpack.walkin = FLATPACK_WALKIN_QUICK; //default is FLATPACK_WALKIN_QUICK, gets written to device with every set_output
+
+  Serial.println("initializing MCP");
+  while(!flatpack.init_MCP());
+
+  Serial.println("looking for flatpack");
+  while(!flatpack.discover()); //can also set the serial manually instead of calling this
+
+  Serial.print("found flatpack with serial ");
+  print_hex_array(flatpack.serial, 6);
+  Serial.println("");
+
+  flatpack.update(); //must be called at least once before calling set_output
+  flatpack.set_output(0, 50.63);
+}
+
+void loop(){
+  unsigned long int last_millis = millis();
+  while(millis()-last_millis < 10000) {
+    if (flatpack.update() == FLATPACK_NEW_DATA) {
+      Serial.print("State = ");
+      Serial.print(flatpack.state, HEX);
+      Serial.print(" Input Temperature = ");
+      Serial.print(flatpack.temp_in);
+      Serial.print(" Output Temperature = ");
+      Serial.print(flatpack.temp_out);
+      Serial.print(" Current = ");
+      Serial.print(flatpack.meas_current);
+      Serial.print(" OutputVoltage = ");
+      Serial.print(flatpack.meas_voltage);
+      Serial.print(" InputVoltage = ");
+      Serial.print(flatpack.voltage_in);
+      if(flatpack.warnings.issueBits.current_limit){
+        Serial.print(" W Constant Current");
+      }
+      if(flatpack.warnings.issueBits.fan1_speed_low){
+        Serial.print(" W Fan 1 speed low");
+      }
+      if(flatpack.warnings.issueBits.output_voltage_low){
+        Serial.print(" W Output Voltage Low");
+      }
+      if(flatpack.warnings.issueBits.fan3_speed_low){
+        Serial.print(" W Fan 3 speed low");
+      }
+      if(flatpack.warnings.issueBits.low_mains){
+        Serial.print(" W Low mains");
+      }
+      if(flatpack.warnings.issueBits.high_mains){
+        Serial.print(" W High mains");
+      }
+      if(flatpack.warnings.issueBits.low_temp){
+        Serial.print(" Low Temp");
+      }
+      if(flatpack.warnings.issueBits.high_temp){
+        Serial.print(" W High temp");
+      }
+      if(flatpack.warnings.issueBits.inner_volt){
+        Serial.print(" W Inner volt");
+      }
+      if(flatpack.warnings.issueBits.internal_voltage){
+        Serial.print(" W Internal voltage");
+      }
+      if(flatpack.warnings.issueBits.mod_fail_primary){
+        Serial.print(" W Module Fail Primary");
+      }
+      if(flatpack.warnings.issueBits.mod_fail_secondary){
+        Serial.print(" W Module Fail Secondary");
+      }
+      if(flatpack.warnings.issueBits.mod_fail_secondary_2){
+        Serial.print(" W Module Fail Secondary 2");
+      }
+      if(flatpack.warnings.issueBits.module_fail){
+        Serial.print(" W Module Fail");
+      }
+      if(flatpack.warnings.issueBits.ovs_lockout){
+        Serial.print(" W OVS Lockout");
+      }
+      if(flatpack.warnings.issueBits.sub_mod1_fail){
+        Serial.print(" W Sub module 1 fail");
+      }
+      if(flatpack.alarms.issueBits.current_limit){
+        Serial.print(" A Constant Current");
+      }
+      if(flatpack.alarms.issueBits.fan1_speed_low){
+        Serial.print(" A Fan 1 speed low");
+      }
+      if(flatpack.alarms.issueBits.output_voltage_low){
+        Serial.print(" A Output Voltage Low");
+      }
+      if(flatpack.alarms.issueBits.fan3_speed_low){
+        Serial.print(" A Fan 3 speed low");
+      }
+      if(flatpack.alarms.issueBits.low_mains){
+        Serial.print(" A Low mains");
+      }
+      if(flatpack.alarms.issueBits.high_mains){
+        Serial.print(" A High mains");
+      }
+      if(flatpack.alarms.issueBits.low_temp){
+        Serial.print(" A Low Temp");
+      }
+      if(flatpack.alarms.issueBits.high_temp){
+        Serial.print(" A High temp");
+      }
+      if(flatpack.alarms.issueBits.inner_volt){
+        Serial.print(" A Inner volt");
+      }
+      if(flatpack.alarms.issueBits.internal_voltage){
+        Serial.print(" A Internal voltage");
+      }
+      if(flatpack.alarms.issueBits.mod_fail_primary){
+        Serial.print(" A Module Fail Primary");
+      }
+      if(flatpack.alarms.issueBits.mod_fail_secondary){
+        Serial.print(" A Module Fail Secondary");
+      }
+      if(flatpack.alarms.issueBits.mod_fail_secondary_2){
+        Serial.print(" A Module Fail Secondary 2");
+      }
+      if(flatpack.alarms.issueBits.module_fail){
+        Serial.print(" A Module Fail");
+      }
+      if(flatpack.alarms.issueBits.ovs_lockout){
+        Serial.print(" A OVS Lockout");
+      }
+      if(flatpack.alarms.issueBits.sub_mod1_fail){
+        Serial.print(" A Sub module 1 fail");
+      }
+      Serial.println();
+    }
+  }
+}
