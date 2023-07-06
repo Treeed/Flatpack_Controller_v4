@@ -7,6 +7,9 @@
 #include "helpers.h"
 #include "draw.h"
 
+#define TFT_CS_PIN   10  //These two are set in User_Setup.h
+#define TFT_DC_PIN   7   // only here for reference
+
 #define CAN_CS_PIN 6
 #define TOUCH_CS_PIN  4
 #define BKL_PIN 9
@@ -15,8 +18,8 @@
 #define DISPLAY_WIDTH 240
 
 #define MAX_CURRENT 40
-#define MAX_VOLTAGE 4.2
-#define MIN_VOLTAGE 3.0
+#define MAX_CELL_VOLTAGE 4.2
+#define MIN_CELL_VOLTAGE 3.0
 #define MAX_CELLS 15
 #define MIN_CELLS 10
 
@@ -189,16 +192,16 @@ void getTouch() {
       }
     }
     if (p.x < 2600 and p.x > 2000 and p.y < 700) {
-      if (cellVoltageSet < MAX_VOLTAGE) {
+      if (cellVoltageSet < MAX_CELL_VOLTAGE) {
         cellVoltageSet = cellVoltageSet + 0.05;
       }
       else {
-        cellVoltageSet = MAX_VOLTAGE;
+        cellVoltageSet = MAX_CELL_VOLTAGE;
       }
     }
     if (p.x < 2600 and p.x > 2000 and p.y > 700) {
-      if (cellVoltageSet <= MIN_VOLTAGE) {
-        cellVoltageSet = MIN_VOLTAGE;
+      if (cellVoltageSet <= MIN_CELL_VOLTAGE) {
+        cellVoltageSet = MIN_CELL_VOLTAGE;
       }
       else {
         cellVoltageSet = cellVoltageSet - 0.05;
