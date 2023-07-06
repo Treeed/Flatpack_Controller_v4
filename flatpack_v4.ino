@@ -13,6 +13,7 @@
 #define CAN_CS_PIN 6
 #define TOUCH_CS_PIN  4
 #define BKL_PIN 9
+#define ACTIVATE_PIN A0
 
 #define DISPLAY_HEIGHT 320
 #define DISPLAY_WIDTH 240
@@ -21,7 +22,10 @@
 #define MAX_CELL_VOLTAGE 4.2
 #define MIN_CELL_VOLTAGE 3.0
 #define MAX_CELLS 15
-#define MIN_CELLS 10
+#define MIN_CELLS 11
+
+#define MIN_VOLTAGE_TOTAL 42
+#define IDLE_CLIM 0
 
 XPT2046_Touchscreen ts(TOUCH_CS_PIN);
 
@@ -30,6 +34,8 @@ float cellVoltageSet = 4.20;
 int cells = 15;
 float voltageTotalSet = cells * cellVoltageSet;
 float Ah = 20.50;
+
+bool active = false;
 
 char tmp[12];
 char tmp2[12];
@@ -44,8 +50,10 @@ void setup() {
   Serial.begin(9600);
   // put your setup code here, to run once:
 
+  pinMode(ACTIVATE_PIN, INPUT_PULLUP);
   pinMode(BKL_PIN, OUTPUT);
   digitalWrite(BKL_PIN,1);
+
 
   tft.init();
   u8f.begin(tft);
@@ -83,7 +91,7 @@ void setup() {
   Serial.println("");
 
   flatpack.update(); //must be called at least once before calling set_output
-  flatpack.set_output(0, 42);
+  flatpack.set_output(IDLE_CLIM, MIN_VOLTAGE_TOTAL);
 
 
   tft.fillScreen(TFT_BLACK);
@@ -106,14 +114,14 @@ int GridTextWidget::vert_spacing_ = vert_spacing;
 int GridTextWidget::label_height_ = label_height;
 
 void drawStatic() {
-  tft.drawFastVLine(DISPLAY_WIDTH / 2, 0, label_height+vert_spacing*4, TFT_CYAN);
-  tft.drawFastVLine(status_square_width, label_height+vert_spacing*4, temp_height, TFT_CYAN);
-  tft.drawFastHLine(0, label_height, DISPLAY_WIDTH, TFT_CYAN);
-  tft.drawFastHLine(0, label_height+vert_spacing, DISPLAY_WIDTH, TFT_CYAN);
-  tft.drawFastHLine(0, label_height+vert_spacing*2, DISPLAY_WIDTH, TFT_CYAN);
-  tft.drawFastHLine(0, label_height+vert_spacing*3, DISPLAY_WIDTH, TFT_CYAN);
-  tft.drawFastHLine(0, label_height+vert_spacing*4, DISPLAY_WIDTH, TFT_CYAN);
-  tft.drawFastHLine(0, issue_y_pos-1, DISPLAY_WIDTH, TFT_CYAN);
+  tft.drawFastVLine(DISPLAY_WIDTH / 2, 0, label_height+vert_spacing*4, TFT_DARKGREY);
+  tft.drawFastVLine(status_square_width, label_height+vert_spacing*4, temp_height, TFT_DARKGREY);
+  tft.drawFastHLine(0, label_height, DISPLAY_WIDTH, TFT_DARKGREY);
+  tft.drawFastHLine(0, label_height+vert_spacing, DISPLAY_WIDTH, TFT_DARKGREY);
+  tft.drawFastHLine(0, label_height+vert_spacing*2, DISPLAY_WIDTH, TFT_DARKGREY);
+  tft.drawFastHLine(0, label_height+vert_spacing*3, DISPLAY_WIDTH, TFT_DARKGREY);
+  tft.drawFastHLine(0, label_height+vert_spacing*4, DISPLAY_WIDTH, TFT_DARKGREY);
+  tft.drawFastHLine(0, issue_y_pos-1, DISPLAY_WIDTH, TFT_DARKGREY);
 
   u8f.setFont(u8g2_font_logisoso18_tr);  // select u8g2 font from here: https://github.com/olikraus/u8g2/wiki/fntlistall
 
@@ -166,6 +174,9 @@ void updateWidgets(){
 
 
 void getTouch() {
+  if(active){
+    return;
+  }
 
   TS_Point p = ts.getPoint();
   Serial.print(p.z);
@@ -299,6 +310,26 @@ void show_issues() {
 }
 
 void update_status(){
+  FlatpackIssue onlyConstantCurrent = {0};
+  onlyConstantCurrent.issueBits.current_limit = 1;
+
+  uint16_t status_color = TFT_GREEN;
+  if(flatpack.state == FLATPACK_STATE_ALARM){
+    status_color = TFT_RED;
+  } else if(flatpack.state == FLATPACK_STATE_WARNING
+            && (flatpack.warnings.canBytes.can_byte_1 != onlyConstantCurrent.canBytes.can_byte_1
+                || flatpack.warnings.canBytes.can_byte_2 != onlyConstantCurrent.canBytes.can_byte_2)){
+    status_color = TFT_ORANGE;
+  } else if (active){
+    status_color = TFT_CYAN;
+  }
+  static uint16_t last_status_color = 0;
+  if(last_status_color != status_color) {
+    tft.fillRoundRect(5, issue_y_pos + 1, status_square_width - 10, DISPLAY_HEIGHT - issue_y_pos - 2, 10, status_color);
+    last_status_color = status_color;
+  }
+
+
   static FlatpackIssue prevWarnings = {1,1,1,1,1,1,1,1,1,1,1};
   static FlatpackIssue prevAlarms;
 
@@ -311,26 +342,75 @@ void update_status(){
   prevWarnings = flatpack.warnings;
   prevAlarms = flatpack.alarms;
 
+  //recovery from an alarm sometimes causes the flatpack to forget its voltage
+  set_output();
+
   show_issues();
+}
 
-  FlatpackIssue onlyConstantCurrent = {0};
-  onlyConstantCurrent.issueBits.current_limit = 1;
+void getActivation(){
+  const unsigned int activate_delay = 1000;
+  const unsigned int debounce_period = 100;
 
-  uint16_t status_color = TFT_GREEN;
-  if(flatpack.state == FLATPACK_STATE_ALARM){
-    status_color = TFT_RED;
-  } else if(flatpack.state == FLATPACK_STATE_WARNING
-            && (flatpack.warnings.canBytes.can_byte_1 != onlyConstantCurrent.canBytes.can_byte_1
-                || flatpack.warnings.canBytes.can_byte_2 != onlyConstantCurrent.canBytes.can_byte_2)){
-    status_color = TFT_ORANGE;
+  static bool last_state = false;
+  static unsigned long int last_change = 0;
+  static bool press_processed = false;
+
+  bool state = !digitalRead(ACTIVATE_PIN);
+  Serial.println(last_change);
+
+  if(state){
+    if(!last_state){
+      last_change = millis();
+      last_state = true;
+    }
+    if(!press_processed){
+      if(active){
+        active = false;
+        set_output();
+        press_processed = true;
+      }else if(millis() - last_change > activate_delay){
+        active = true;
+        set_output();
+        press_processed = true;
+      }
+    }
+  }else{
+    if(last_state){
+      last_change = millis();
+      last_state = false;
+    }
+    if(press_processed && millis() - last_change > debounce_period){
+      press_processed = false;
+    }
   }
-  tft.fillRoundRect(5, issue_y_pos+1, status_square_width-10, DISPLAY_HEIGHT-issue_y_pos-2, 10, status_color);
+}
 
+void set_output(){
+  float voltage = active ? voltageTotalSet : MIN_VOLTAGE_TOTAL;
+  float current = active ? currentSet : IDLE_CLIM;
+
+  flatpack.over_voltage_protection = voltage+1;
+  flatpack.set_output(current, voltage);
+}
+
+void set_output_sometimes(){
+  //just in case the supply somehow forgets its settings
+  const unsigned int period = 1000;
+
+  static unsigned long int last_set = 0;
+  if(millis() - last_set > period){
+    set_output();
+    last_set = millis();
+  }
 }
 
 void loop() {
   flatpack.update();
   getTouch();
+  getActivation();
+  set_output_sometimes();
+
   voltageTotalSet = cells * cellVoltageSet;
 
   updateWidgets();
