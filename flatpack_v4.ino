@@ -71,7 +71,7 @@ void setup() {
   flatpack.can_driver = &mcp_can; //must be set before any library function
   flatpack.id = 1; //must be set before first calling update(), cannot be changed later
   flatpack.over_voltage_protection = 55; //must be set before first calling set_output, gets written to device with every set_output
-  flatpack.walkin = FLATPACK_WALKIN_SLOW; //default is FLATPACK_WALKIN_QUICK, gets written to device with every set_output
+  flatpack.walkin = FLATPACK_WALKIN_QUICK; //default is FLATPACK_WALKIN_QUICK, gets written to device with every set_output
 
   u8f.println();
   Serial.println("initializing MCP");
