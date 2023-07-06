@@ -186,7 +186,7 @@ void getTouch() {
   Serial.println(p.y);
 
   if (p.z > 800) {
-    if (p.x > 2800 and p.y < 700) {
+    if (p.x > 2900 and p.y < 700) {
       if (currentSet < MAX_CURRENT) {
         currentSet++;
       }
@@ -194,7 +194,7 @@ void getTouch() {
         currentSet = 1;
       }
     }
-    if (p.x > 2800 and p.y > 700) {
+    if (p.x > 2900 and p.y > 700) {
       if (currentSet <= 1) {
         currentSet = MAX_CURRENT;
       }
@@ -202,7 +202,7 @@ void getTouch() {
         currentSet--;
       }
     }
-    if (p.x < 2600 and p.x > 2000 and p.y < 700) {
+    if (p.x < 2800 and p.x > 2300 and p.y < 700) {
       if (cellVoltageSet < MAX_CELL_VOLTAGE) {
         cellVoltageSet = cellVoltageSet + 0.05;
       }
@@ -210,7 +210,7 @@ void getTouch() {
         cellVoltageSet = MAX_CELL_VOLTAGE;
       }
     }
-    if (p.x < 2600 and p.x > 2000 and p.y > 700) {
+    if (p.x < 2800 and p.x > 2300 and p.y > 700) {
       if (cellVoltageSet <= MIN_CELL_VOLTAGE) {
         cellVoltageSet = MIN_CELL_VOLTAGE;
       }
@@ -219,7 +219,7 @@ void getTouch() {
       }
     }
 
-    if (p.x < 1900 and p.y < 1100) {
+    if (p.x < 2100 and p.y < 1100) {
       if (cells < MAX_CELLS) {
         cells ++;
       }
@@ -227,7 +227,7 @@ void getTouch() {
         cells = MAX_CELLS;
       }
     }
-    if (p.x < 1900 and p.y > 1100) {
+    if (p.x < 2100 and p.y > 1100) {
       if (cells <= MIN_CELLS) {
         cells = MIN_CELLS;
       }
@@ -357,7 +357,6 @@ void getActivation(){
   static bool press_processed = false;
 
   bool state = !digitalRead(ACTIVATE_PIN);
-  Serial.println(last_change);
 
   if(state){
     if(!last_state){
