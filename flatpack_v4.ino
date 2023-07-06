@@ -29,6 +29,7 @@ float voltageTotalSet = cells * cellVoltageSet;
 float Ah = 20.50;
 
 char tmp[12];
+char tmp2[12];
 
 MCP_CAN mcp_can(CAN_CS_PIN);
 FlatpackMCP flatpack;
@@ -87,10 +88,13 @@ void setup() {
 }
 
 
-const int left_margin = 20;
-const int bottom_margin = 15;
-const int vert_spacing = 60;
+const int left_margin = 15;
+const int bottom_margin = 10;
+const int vert_spacing = 50;
 const int label_height = 40;
+const int temp_height = 40;
+const int status_square_width = 80;
+const int issue_y_pos = label_height + vert_spacing * 4 + temp_height + 1;
 
 int GridTextWidget::display_width = DISPLAY_WIDTH;
 int GridTextWidget::left_margin_ = left_margin;
@@ -99,12 +103,14 @@ int GridTextWidget::vert_spacing_ = vert_spacing;
 int GridTextWidget::label_height_ = label_height;
 
 void drawStatic() {
-  tft.drawFastVLine(DISPLAY_WIDTH / 2, 0, DISPLAY_HEIGHT, TFT_CYAN);
+  tft.drawFastVLine(DISPLAY_WIDTH / 2, 0, label_height+vert_spacing*4, TFT_CYAN);
+  tft.drawFastVLine(status_square_width, label_height+vert_spacing*4, temp_height, TFT_CYAN);
   tft.drawFastHLine(0, label_height, DISPLAY_WIDTH, TFT_CYAN);
   tft.drawFastHLine(0, label_height+vert_spacing, DISPLAY_WIDTH, TFT_CYAN);
   tft.drawFastHLine(0, label_height+vert_spacing*2, DISPLAY_WIDTH, TFT_CYAN);
   tft.drawFastHLine(0, label_height+vert_spacing*3, DISPLAY_WIDTH, TFT_CYAN);
   tft.drawFastHLine(0, label_height+vert_spacing*4, DISPLAY_WIDTH, TFT_CYAN);
+  tft.drawFastHLine(0, issue_y_pos-1, DISPLAY_WIDTH, TFT_CYAN);
 
   u8f.setFont(u8g2_font_logisoso18_tr);  // select u8g2 font from here: https://github.com/olikraus/u8g2/wiki/fntlistall
 
@@ -125,6 +131,15 @@ void updateWidgets(){
   static GridTextWidget CellsWid(&u8f,TFT_WHITE, TFT_BLACK, 0, 3, u8g2_font_logisoso26_tr);
   static GridTextWidget AhWid(&u8f,TFT_WHITE, TFT_BLACK, 1, 3, u8g2_font_logisoso26_tr);
 
+  if(flatpack.warnings.issueBits.output_voltage_low || flatpack.alarms.issueBits.output_voltage_low){
+    VoltageMesWid.foreground_color = TFT_RED;
+  }else if(flatpack.state == FLATPACK_STATE_WALKIN){
+    VoltageMesWid.foreground_color = TFT_CYAN;
+  }else{
+    VoltageMesWid.foreground_color = TFT_WHITE;
+  }
+  CurrentMesWid.foreground_color = flatpack.warnings.issueBits.current_limit ? TFT_CYAN : TFT_WHITE;
+
   CurrentMesWid.update(strcat(dtostrf(flatpack.meas_current,0,1,tmp), "A"));
   CurrentSetWid.update(strcat(dtostrf(currentSet,0,1,tmp), "A"));
   CellVoltageMesWid.update(strcat(dtostrf(flatpack.meas_voltage/cells,0,2,tmp), "V"));
@@ -134,10 +149,15 @@ void updateWidgets(){
   CellsWid.update(strcat(dtostrf(cells,0,0,tmp), "S"));
   AhWid.update(strcat(dtostrf(Ah,0,1,tmp), "Ah"));
 
-  static TextWidget TempWid(&u8f, TFT_WHITE, TFT_BLACK, 140, 312, u8g2_font_logisoso18_tf);
-  static TextWidget VACWid(&u8f, TFT_WHITE, TFT_BLACK, 20, 312, u8g2_font_logisoso18_tf);
+  static TextWidget TempWid(&u8f, TFT_WHITE, TFT_BLACK, 100, 270, u8g2_font_logisoso18_tf);
+  static TextWidget VACWid(&u8f, TFT_WHITE, TFT_BLACK, 15, 270, u8g2_font_logisoso18_tf);
 
-  TempWid.update(strcat(dtostrf(flatpack.temp_out,0,0,tmp), "°C"));
+  bool bad_temp = flatpack.warnings.issueBits.high_temp || flatpack.warnings.issueBits.low_temp || flatpack.alarms.issueBits.high_temp || flatpack.alarms.issueBits.low_temp;
+  TempWid.foreground_color = bad_temp ? TFT_RED : TFT_WHITE;
+  bool bad_mains = flatpack.warnings.issueBits.high_mains || flatpack.warnings.issueBits.low_mains || flatpack.alarms.issueBits.high_mains || flatpack.alarms.issueBits.low_mains;
+  VACWid.foreground_color = bad_mains ? TFT_RED : TFT_WHITE;
+
+  TempWid.update(strcat(strcat(strcat(strcat(dtostrf(flatpack.temp_in,0,0,tmp), "°C"), "->"), dtostrf(flatpack.temp_out, 0, 0, tmp2)), "°C"));
   VACWid.update(strcat(dtostrf(flatpack.voltage_in,0,0,tmp), "V"));
 }
 
@@ -204,72 +224,105 @@ void getTouch() {
   }
 }
 
-int issue_line_len = 0;
-const int max_issue_line_len = 180;
-void show_issue(bool condition, const char *message) {
-  if (condition) {
-    int msg_len = u8f.getUTF8Width(message);
-    issue_line_len += msg_len;
+class IssueShower {
+public:
+    const int width;
+    int issue_line_len = 0;
+    int issue_line_num = 0;
+    int start_point_x;
+    int start_point_y;
+    int line_height;
 
-    if(issue_line_len > max_issue_line_len) {
-      tft.println();
-      issue_line_len = msg_len;
+    IssueShower(int start_point_x_, int start_point_y_, int width_, int height) : width(width_), start_point_x(start_point_x_), start_point_y(start_point_y_) {
+      tft.fillRect(start_point_x, start_point_y, width, height, TFT_BLACK);
+
+      u8f.setFont(u8g2_font_mozart_nbp_tr);
+      line_height = u8f.getFontAscent() - u8f.getFontDescent() + 2;
+
+      u8f.setCursor(start_point_x, start_point_y + line_height);
+      u8f.setForegroundColor(TFT_WHITE);
     }
-    tft.print(message);
-  }
-}
+
+    void show_issue(bool condition, const char *message) {
+      if (condition) {
+        int msg_len = u8f.getUTF8Width(message);
+        issue_line_len += msg_len;
+
+        if (issue_line_len > width) {
+          issue_line_num++;
+          u8f.setCursor(start_point_x, start_point_y + line_height * (issue_line_num+1));
+          issue_line_len = msg_len;
+        }
+        u8f.print(message);
+      }
+    }
+};
 
 void show_issues() {
-  static FlatpackIssue prevWarnings;
+  IssueShower issues(status_square_width+1, issue_y_pos, DISPLAY_WIDTH - status_square_width, DISPLAY_HEIGHT-issue_y_pos);
+
+  issues.show_issue(flatpack.warnings.issueBits.current_limit, " (W) CC");
+  issues.show_issue(flatpack.warnings.issueBits.fan1_speed_low, " (W) Fan1 Slow");
+  issues.show_issue(flatpack.warnings.issueBits.output_voltage_low, " (W) Out Low");
+  issues.show_issue(flatpack.warnings.issueBits.fan3_speed_low, " (W) Fan3 Slow");
+  issues.show_issue(flatpack.warnings.issueBits.low_mains, " (W) Low Mains");
+  issues.show_issue(flatpack.warnings.issueBits.high_mains, " (W) High Mains");
+  issues.show_issue(flatpack.warnings.issueBits.low_temp, " (W) Low Temp");
+  issues.show_issue(flatpack.warnings.issueBits.high_temp, " (W) High Temp");
+  issues.show_issue(flatpack.warnings.issueBits.inner_volt, " (W) Inner Volt");
+  issues.show_issue(flatpack.warnings.issueBits.internal_voltage, " (W) Int Volt");
+  issues.show_issue(flatpack.warnings.issueBits.mod_fail_primary, " (W) Mod Fail Prim");
+  issues.show_issue(flatpack.warnings.issueBits.mod_fail_secondary, " (W) Mod Fail Sec");
+  issues.show_issue(flatpack.warnings.issueBits.mod_fail_secondary_2, " (W) Mod Fail Sec2");
+  issues.show_issue(flatpack.warnings.issueBits.module_fail, " (W) Mod Fail");
+  issues.show_issue(flatpack.warnings.issueBits.ovs_lockout, " (W) OVS Lock");
+  issues.show_issue(flatpack.warnings.issueBits.sub_mod1_fail, " (W) Sub Mod Fail");
+  issues.show_issue(flatpack.alarms.issueBits.current_limit, " (A) CC");
+  issues.show_issue(flatpack.alarms.issueBits.fan1_speed_low, " (A) Fan1 Slow");
+  issues.show_issue(flatpack.alarms.issueBits.output_voltage_low, " (A) Out Low");
+  issues.show_issue(flatpack.alarms.issueBits.fan3_speed_low, " (A) Fan3 Slow");
+  issues.show_issue(flatpack.alarms.issueBits.low_mains, " (A) Low Mains");
+  issues.show_issue(flatpack.alarms.issueBits.high_mains, " (A) High Mains");
+  issues.show_issue(flatpack.alarms.issueBits.low_temp, " (A) Low Temp");
+  issues.show_issue(flatpack.alarms.issueBits.high_temp, " (A) High Temp");
+  issues.show_issue(flatpack.alarms.issueBits.inner_volt, " (A) Inner Volt");
+  issues.show_issue(flatpack.alarms.issueBits.internal_voltage, " (A) Int Volt");
+  issues.show_issue(flatpack.alarms.issueBits.mod_fail_primary, " (A) Mod Fail Prim");
+  issues.show_issue(flatpack.alarms.issueBits.mod_fail_secondary, " (A) Mod Fail Sec");
+  issues.show_issue(flatpack.alarms.issueBits.mod_fail_secondary_2, " (A) Mod Fail Sec2");
+  issues.show_issue(flatpack.alarms.issueBits.module_fail, " (A) Mod Fail");
+  issues.show_issue(flatpack.alarms.issueBits.ovs_lockout, " (A) OVS Lock");
+  issues.show_issue(flatpack.alarms.issueBits.sub_mod1_fail, " (A) Sub Mod Fail");
+}
+
+void update_status(){
+  static FlatpackIssue prevWarnings = {1,1,1,1,1,1,1,1,1,1,1};
   static FlatpackIssue prevAlarms;
 
   if(flatpack.warnings.canBytes.can_byte_1 == prevWarnings.canBytes.can_byte_1
-  && flatpack.warnings.canBytes.can_byte_2 == prevWarnings.canBytes.can_byte_2
-  && flatpack.alarms.canBytes.can_byte_1 == prevAlarms.canBytes.can_byte_1
-  && flatpack.alarms.canBytes.can_byte_2 == prevAlarms.canBytes.can_byte_2){
+     && flatpack.warnings.canBytes.can_byte_2 == prevWarnings.canBytes.can_byte_2
+     && flatpack.alarms.canBytes.can_byte_1 == prevAlarms.canBytes.can_byte_1
+     && flatpack.alarms.canBytes.can_byte_2 == prevAlarms.canBytes.can_byte_2){
     return;
   }
   prevWarnings = flatpack.warnings;
   prevAlarms = flatpack.alarms;
 
-  tft.fillRect(0, 300, 40, 40, TFT_BLACK);
+  show_issues();
 
-  u8f.setCursor(0, 300);
-  u8f.setFont(u8g2_font_mozart_nbp_tr);
-  issue_line_len = 0;
+  FlatpackIssue onlyConstantCurrent = {0};
+  onlyConstantCurrent.issueBits.current_limit = 1;
 
-  show_issue(flatpack.warnings.issueBits.current_limit, " W CC");
-  show_issue(flatpack.warnings.issueBits.fan1_speed_low, " W Fan1 Slow");
-  show_issue(flatpack.warnings.issueBits.output_voltage_low, " W Out Low");
-  show_issue(flatpack.warnings.issueBits.fan3_speed_low, " W Fan3 Slow");
-  show_issue(flatpack.warnings.issueBits.low_mains, " W Low Mains");
-  show_issue(flatpack.warnings.issueBits.high_mains, " W High Mains");
-  show_issue(flatpack.warnings.issueBits.low_temp, " W Low Temp");
-  show_issue(flatpack.warnings.issueBits.high_temp, " W High Temp");
-  show_issue(flatpack.warnings.issueBits.inner_volt, " W Inner Volt");
-  show_issue(flatpack.warnings.issueBits.internal_voltage, " W Int Volt");
-  show_issue(flatpack.warnings.issueBits.mod_fail_primary, " W Mod Fail Prim");
-  show_issue(flatpack.warnings.issueBits.mod_fail_secondary, " W Mod Fail Sec");
-  show_issue(flatpack.warnings.issueBits.mod_fail_secondary_2, " W Mod Fail Sec2");
-  show_issue(flatpack.warnings.issueBits.module_fail, " W Mod Fail");
-  show_issue(flatpack.warnings.issueBits.ovs_lockout, " W OVS Lock");
-  show_issue(flatpack.warnings.issueBits.sub_mod1_fail, " W Sub Mod Fail");
-  show_issue(flatpack.alarms.issueBits.current_limit, " A CC");
-  show_issue(flatpack.alarms.issueBits.fan1_speed_low, " A Fan1 Slow");
-  show_issue(flatpack.alarms.issueBits.output_voltage_low, " A Out Low");
-  show_issue(flatpack.alarms.issueBits.fan3_speed_low, " A Fan3 Slow");
-  show_issue(flatpack.alarms.issueBits.low_mains, " A Low Mains");
-  show_issue(flatpack.alarms.issueBits.high_mains, " A High Mains");
-  show_issue(flatpack.alarms.issueBits.low_temp, " A Low Temp");
-  show_issue(flatpack.alarms.issueBits.high_temp, " A High Temp");
-  show_issue(flatpack.alarms.issueBits.inner_volt, " A Inner Volt");
-  show_issue(flatpack.alarms.issueBits.internal_voltage, " A Int Volt");
-  show_issue(flatpack.alarms.issueBits.mod_fail_primary, " A Mod Fail Prim");
-  show_issue(flatpack.alarms.issueBits.mod_fail_secondary, " A Mod Fail Sec");
-  show_issue(flatpack.alarms.issueBits.mod_fail_secondary_2, " A Mod Fail Sec2");
-  show_issue(flatpack.alarms.issueBits.module_fail, " A Mod Fail");
-  show_issue(flatpack.alarms.issueBits.ovs_lockout, " A OVS Lock");
-  show_issue(flatpack.alarms.issueBits.sub_mod1_fail, " A Sub Mod Fail");
+  uint16_t status_color = TFT_GREEN;
+  if(flatpack.state == FLATPACK_STATE_ALARM){
+    status_color = TFT_RED;
+  } else if(flatpack.state == FLATPACK_STATE_WARNING
+            && (flatpack.warnings.canBytes.can_byte_1 != onlyConstantCurrent.canBytes.can_byte_1
+                || flatpack.warnings.canBytes.can_byte_2 != onlyConstantCurrent.canBytes.can_byte_2)){
+    status_color = TFT_ORANGE;
+  }
+  tft.fillRoundRect(5, issue_y_pos+1, status_square_width-10, DISPLAY_HEIGHT-issue_y_pos-2, 10, status_color);
+
 }
 
 void loop() {
@@ -278,7 +331,7 @@ void loop() {
   voltageTotalSet = cells * cellVoltageSet;
 
   updateWidgets();
-  show_issues();
+  update_status();
 
   delay(10);
 }
