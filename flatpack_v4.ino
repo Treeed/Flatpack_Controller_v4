@@ -21,10 +21,10 @@
 #define MAX_CURRENT 40
 #define MAX_CELL_VOLTAGE 4.2
 #define MIN_CELL_VOLTAGE 3.0
-#define MAX_CELLS 15
-#define MIN_CELLS 11
+#define MAX_CELLS 18
+#define MIN_CELLS 10
 
-#define MIN_VOLTAGE_TOTAL 42
+#define MIN_VOLTAGE_TOTAL 39.9
 #define IDLE_CLIM 0
 
 XPT2046_Touchscreen ts(TOUCH_CS_PIN);
@@ -389,7 +389,8 @@ void set_output(){
   float voltage = active ? voltageTotalSet : MIN_VOLTAGE_TOTAL;
   float current = active ? currentSet : IDLE_CLIM;
 
-  flatpack.over_voltage_protection = voltage+1;
+  // for full range use 48V mode below 66 and 60V mode above 66. Never use the stupid 48V NiCd mode
+  flatpack.over_voltage_protection = voltage < 66 ? 70 : 80;
   flatpack.set_output(current, voltage);
 }
 
