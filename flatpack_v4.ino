@@ -27,13 +27,25 @@
 #define MIN_VOLTAGE_TOTAL 39.9
 #define IDLE_CLIM 0
 
+class AhCounter{
+public:
+    // use double, since the smallest increment of float at a value of 20 is 2e-6, but 1Ams is just 5e-6, so we might get truncation errors
+    double Ah;
+
+    void init();
+    void update();
+
+private:
+    unsigned long int last_update;
+};
+
 XPT2046_Touchscreen ts(TOUCH_CS_PIN);
 
 float currentSet = 5;
 float cellVoltageSet = 4.20;
 int cells = 15;
 float voltageTotalSet = cells * cellVoltageSet;
-float Ah = 20.50;
+AhCounter ah_counter;
 
 bool active = false;
 
@@ -54,6 +66,7 @@ void setup() {
   pinMode(BKL_PIN, OUTPUT);
   digitalWrite(BKL_PIN,1);
 
+  ah_counter.init();
 
   tft.init();
   u8f.begin(tft);
@@ -158,7 +171,7 @@ void updateWidgets(){
   VoltageSetWid.update(strcat(dtostrf(voltageTotalSet,0,1,tmp), "V"));
   VoltageMesWid.update(strcat(dtostrf(flatpack.meas_voltage,0,1,tmp), "V"));
   CellsWid.update(strcat(dtostrf(cells,0,0,tmp), "S"));
-  AhWid.update(strcat(dtostrf(Ah,0,1,tmp), "Ah"));
+  AhWid.update(strcat(dtostrf(ah_counter.Ah,0,1,tmp), "Ah"));
 
   static TextWidget TempWid(&u8f, TFT_WHITE, TFT_BLACK, 100, 270, u8g2_font_logisoso18_tf);
   static TextWidget VACWid(&u8f, TFT_WHITE, TFT_BLACK, 15, 270, u8g2_font_logisoso18_tf);
@@ -405,11 +418,23 @@ void set_output_sometimes(){
   }
 }
 
+void AhCounter::init(){
+  last_update = millis();
+}
+
+void AhCounter::update(){
+  unsigned int period = millis() - last_update;
+  last_update = millis();
+
+  Ah += period * (double) flatpack.meas_current / 1000 / 60 / 60;
+}
+
 void loop() {
   flatpack.update();
   getTouch();
   getActivation();
   set_output_sometimes();
+  ah_counter.update();
 
   voltageTotalSet = cells * cellVoltageSet;
 
